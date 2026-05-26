@@ -621,18 +621,30 @@ class AnthropicServing:
 
             # Handle text content deltas
             if delta.content is not None and delta.content != "":
-                # Start a text content block if needed
-                if not content_block_open:
-                    start_event = AnthropicStreamEvent(
-                        type="content_block_start",
+                # Close previous content block if open (e.g. tool_use block)
+                if content_block_open:
+                    stop_event = AnthropicStreamEvent(
+                        type="content_block_stop",
                         index=content_block_index,
-                        content_block=AnthropicContentBlock(type="text", text=""),
                     )
                     yield _wrap_sse_event(
-                        start_event.model_dump_json(exclude_none=True),
-                        "content_block_start",
+                        stop_event.model_dump_json(exclude_none=True),
+                        "content_block_stop",
                     )
-                    content_block_open = True
+                    content_block_index += 1
+                    content_block_open = False
+
+                # Start a text content block
+                start_event = AnthropicStreamEvent(
+                    type="content_block_start",
+                    index=content_block_index,
+                    content_block=AnthropicContentBlock(type="text", text=""),
+                )
+                yield _wrap_sse_event(
+                    start_event.model_dump_json(exclude_none=True),
+                    "content_block_start",
+                )
+                content_block_open = True
 
                 # Emit text delta
                 delta_event = AnthropicStreamEvent(
