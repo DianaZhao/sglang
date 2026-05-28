@@ -438,7 +438,7 @@ class AnthropicServing:
         # State tracking
         first_chunk = True
         content_block_index = 0
-        content_block_open = False
+        current_block_type: Optional[str] = None  # "text" | "tool_use" | None
         finish_reason: Optional[str] = None
         usage_info: Optional[dict] = None
         message_id = f"msg_{uuid.uuid4().hex}"
@@ -452,7 +452,7 @@ class AnthropicServing:
 
             if data_str == "[DONE]":
                 # Close any open content block
-                if content_block_open:
+                if current_block_type is not None:
                     stop_event = AnthropicStreamEvent(
                         type="content_block_stop",
                         index=content_block_index,
@@ -560,7 +560,7 @@ class AnthropicServing:
                     # New tool call: close previous block, start new one
                     if tc_func and tc_func.name:
                         # Close previous content block if open
-                        if content_block_open:
+                        if current_block_type is not None:
                             stop_event = AnthropicStreamEvent(
                                 type="content_block_stop",
                                 index=content_block_index,
@@ -586,7 +586,7 @@ class AnthropicServing:
                             start_event.model_dump_json(exclude_none=True),
                             "content_block_start",
                         )
-                        content_block_open = True
+                        current_block_type = "tool_use"
 
                         # Stream initial arguments if present
                         if tc_func.arguments:
@@ -621,8 +621,8 @@ class AnthropicServing:
 
             # Handle text content deltas
             if delta.content is not None and delta.content != "":
-                # Close previous content block if open (e.g. tool_use block)
-                if content_block_open:
+                if content_block_open and current_block_type != "text":
+                    # Close previous block
                     stop_event = AnthropicStreamEvent(
                         type="content_block_stop",
                         index=content_block_index,
@@ -634,18 +634,19 @@ class AnthropicServing:
                     content_block_index += 1
                     content_block_open = False
 
-                # Start a text content block
-                start_event = AnthropicStreamEvent(
-                    type="content_block_start",
-                    index=content_block_index,
-                    content_block=AnthropicContentBlock(type="text", text=""),
-                )
-                yield _wrap_sse_event(
-                    start_event.model_dump_json(exclude_none=True),
-                    "content_block_start",
-                )
-                content_block_open = True
-
+                # Start a text content block if needed
+                if not content_block_open:
+                    start_event = AnthropicStreamEvent(
+                        type="content_block_start",
+                        index=content_block_index,
+                        content_block=AnthropicContentBlock(type="text", text=""),
+                    )
+                    yield _wrap_sse_event(
+                        start_event.model_dump_json(exclude_none=True),
+                        "content_block_start",
+                    )
+                    content_block_open = True
+                    current_block_type = "text"
                 # Emit text delta
                 delta_event = AnthropicStreamEvent(
                     type="content_block_delta",
@@ -659,6 +660,7 @@ class AnthropicServing:
                     delta_event.model_dump_json(exclude_none=True),
                     "content_block_delta",
                 )
+
 
     def _convert_response(
         self, response: ChatCompletionResponse
