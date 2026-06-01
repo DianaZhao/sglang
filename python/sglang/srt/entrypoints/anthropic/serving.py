@@ -438,6 +438,7 @@ class AnthropicServing:
         # State tracking
         first_chunk = True
         content_block_index = 0
+        content_block_open = False
         current_block_type: Optional[str] = None  # "text" | "tool_use" | None
         finish_reason: Optional[str] = None
         usage_info: Optional[dict] = None
@@ -452,7 +453,7 @@ class AnthropicServing:
 
             if data_str == "[DONE]":
                 # Close any open content block
-                if current_block_type is not None:
+                if content_block_open:
                     stop_event = AnthropicStreamEvent(
                         type="content_block_stop",
                         index=content_block_index,
@@ -560,7 +561,7 @@ class AnthropicServing:
                     # New tool call: close previous block, start new one
                     if tc_func and tc_func.name:
                         # Close previous content block if open
-                        if current_block_type is not None:
+                        if content_block_open:
                             stop_event = AnthropicStreamEvent(
                                 type="content_block_stop",
                                 index=content_block_index,
@@ -586,6 +587,7 @@ class AnthropicServing:
                             start_event.model_dump_json(exclude_none=True),
                             "content_block_start",
                         )
+                        content_block_open = True
                         current_block_type = "tool_use"
 
                         # Stream initial arguments if present
@@ -633,7 +635,8 @@ class AnthropicServing:
                     )
                     content_block_index += 1
                     content_block_open = False
-
+                    current_block_type = None
+                    
                 # Start a text content block if needed
                 if not content_block_open:
                     start_event = AnthropicStreamEvent(
