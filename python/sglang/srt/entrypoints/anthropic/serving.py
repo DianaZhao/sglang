@@ -607,6 +607,41 @@ class AnthropicServing:
 
                     elif tc_func and tc_func.arguments:
                         # Continuing arguments for current tool call
+                        if content_block_open and current_block_type != "tool_use":
+                            # Close previous block (e.g. text block from normal_text
+                            # interleaved before tool call arg continuation)
+                            stop_event = AnthropicStreamEvent(
+                                type="content_block_stop",
+                                index=content_block_index,
+                            )
+                            yield _wrap_sse_event(
+                                stop_event.model_dump_json(exclude_none=True),
+                                "content_block_stop",
+                            )
+                            content_block_index += 1
+                            content_block_open = False
+                            current_block_type = None
+
+                        if not content_block_open:
+                            # Block was never opened (e.g. first chunk only had
+                            # arguments) — open a tool_use placeholder
+                            start_event = AnthropicStreamEvent(
+                                type="content_block_start",
+                                index=content_block_index,
+                                content_block=AnthropicContentBlock(
+                                    type="tool_use",
+                                    id=tc_id or f"toolu_{uuid.uuid4().hex}",
+                                    name="",
+                                    input={},
+                                ),
+                            )
+                            yield _wrap_sse_event(
+                                start_event.model_dump_json(exclude_none=True),
+                                "content_block_start",
+                            )
+                            content_block_open = True
+                            current_block_type = "tool_use"
+
                         delta_event = AnthropicStreamEvent(
                             type="content_block_delta",
                             index=content_block_index,
