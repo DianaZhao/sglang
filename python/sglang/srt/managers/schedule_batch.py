@@ -740,8 +740,10 @@ class Req(ReqDllmMixin):
         self.extend_input_len = 0
         # The relative logprob_start_len in an extend batch
         self.extend_logprob_start_len = 0
+        # TODO(ispobock): rename to last_device_node
         self.last_node: Any = None
         self.last_host_node: Any = None
+        self.best_match_node: Any = None
         self.host_hit_length = 0
         # Tokens loaded from storage backend (L3) during prefetch for this request
         self.storage_hit_length = 0
@@ -1041,12 +1043,14 @@ class Req(ReqDllmMixin):
                 self.prefix_indices,
                 self.last_node,
                 self.last_host_node,
+                self.best_match_node,
                 self.host_hit_length,
                 self.mamba_branching_seqlen,
             ) = (
                 match_result.device_indices,
                 match_result.last_device_node,
                 match_result.last_host_node,
+                match_result.best_match_node,
                 match_result.host_hit_length,
                 match_result.mamba_branching_seqlen,
             )
@@ -2324,7 +2328,10 @@ class ScheduleBatch(ScheduleBatchDisaggregationDecodeMixin):
                 )
 
         # Update fields
-        self.input_ids = self.output_ids
+        # Coerce to int64: torch sampling helpers (sampling_from_probs_torch /
+        # top_k_top_p_min_p_sampling_from_probs_torch) return int32 token ids,
+        # but downstream kernels enforce int64 (e.g. DeepSeek-V4 hash_topk).
+        self.input_ids = self.output_ids.to(torch.int64)
         self.output_ids = None
 
         if self.model_config.is_encoder_decoder:

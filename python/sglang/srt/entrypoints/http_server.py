@@ -399,51 +399,6 @@ async def lifespan(fast_api_app: FastAPI):
         warmup_thread.join()
 
 
-# Debug middleware — log every HTTP response body.
-# Enable with: SGLANG_DEBUG_LOG_RESPONSES=1
-class _DebugResponseLoggingMiddleware:
-    """Raw ASGI middleware that captures and logs all HTTP response bodies."""
-
-    def __init__(self, app):
-        self.app = app
-        self._logger = logging.getLogger("sglang.debug.responses")
-
-    async def __call__(self, scope, receive, send):
-        if scope["type"] != "http":
-            await self.app(scope, receive, send)
-            return
-
-        path = scope.get("path", "")
-        method = scope.get("method", "")
-        captured_body = bytearray()
-        captured_status = [None]
-
-        async def _send_wrapper(message):
-            if message["type"] == "http.response.start":
-                captured_status[0] = message.get("status")
-            elif message["type"] == "http.response.body":
-                captured_body.extend(message.get("body", b""))
-            await send(message)
-
-        await self.app(scope, receive, _send_wrapper)
-
-        status = captured_status[0]
-        if status is not None:
-            body_str = bytes(captured_body).decode("utf-8", errors="replace")
-            if len(body_str) > 4096:
-                body_str = body_str[:4096] + "\n...[TRUNCATED]"
-            self._logger.info(
-                "\n=== HTTP RESPONSE ===\n"
-                "%s %s -> %s\n"
-                "Body:\n%s\n"
-                "======================",
-                method,
-                path,
-                status,
-                body_str,
-            )
-
-
 # Fast API
 app = FastAPI(
     lifespan=lifespan,
@@ -456,9 +411,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-if os.environ.get("SGLANG_DEBUG_LOG_RESPONSES"):
-    app.add_middleware(_DebugResponseLoggingMiddleware)
-    logging.getLogger("sglang.debug.responses").setLevel(logging.INFO)
 
 # Include routers
 from sglang.srt.entrypoints.v1_loads import router as v1_loads_router

@@ -1362,7 +1362,7 @@ class GPTQMarlinMoEMethod(FusedMoEMethodBase):
                 num_experts,
                 scales_size13,
                 2 * intermediate_size_per_partition,
-                dtype=params_dtype,
+                dtype=torch.half,
             ),
             requires_grad=False,
         )
@@ -1370,7 +1370,7 @@ class GPTQMarlinMoEMethod(FusedMoEMethodBase):
         set_weight_attrs(w13_scales, extra_weight_attrs)
         # down_proj scales
         w2_scales = torch.nn.Parameter(
-            torch.empty(num_experts, scales_size2, hidden_size, dtype=params_dtype),
+            torch.empty(num_experts, scales_size2, hidden_size, dtype=torch.half),
             requires_grad=False,
         )
         layer.register_parameter("w2_scales", w2_scales)
